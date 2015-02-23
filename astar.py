@@ -1,5 +1,5 @@
 import pygame
-
+from math import sqrt
 #http://www.raywenderlich.com/4946/introduction-to-a-pathfinding
 
 class GridWorld():
@@ -14,6 +14,7 @@ class GridWorld():
         self.cell_size = cell_size
         self._init_cells()
         self._init_paul_and_cake()
+        self.add_tile_type = None
 
     def _draw_background(self):
         WHITE = (255,255,255)
@@ -74,11 +75,15 @@ class GridWorld():
                 if event.type is pygame.QUIT:
                     running = False
                 elif event.type is pygame.MOUSEBUTTONDOWN:
-                    self._add_lava(event.pos)
+                    if self.add_tile_type == 'lava':
+                        self._add_lava(event.pos)
                 elif event.type is pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
                         self.paul.run_astar(self.cake.cell_coordinates, self)
                         self.paul.get_path()
+                    elif event.key == pygame.K_l:
+                        self.add_tile_type = 'lava'
+
 class Actor(object):
     def __init__(self, cell_coordinates, world, image_loc, unremovable = False, is_obstacle = True):
         self.is_obstacle = is_obstacle
@@ -94,7 +99,7 @@ class Actor(object):
     def draw(self):
         cells = self.world.cells
         cell = cells[self.cell_coordinates]
-        x_y_coords = self.world._add_coords(cell.coordinates, (3,3) ) #add an offset so that the image will fit inside the cell border. This arcane line of code just adds two tuples together. Yeah, it's kind of dumb.
+        x_y_coords = self.world._add_coords(cell.coordinates, (3,3) ) #add an offset so that the image will fit inside the cell border.
         rect_dim = (self.image_rect.width, self.image_rect.height)
         self.image_rect = pygame.Rect(x_y_coords, rect_dim)
         screen = self.world.screen
@@ -111,6 +116,8 @@ class Cell():
 
     @property
     def f_cost(self):
+        if self.g_cost is None or self.h_cost is None:
+            return None
         return self.g_cost + self.h_cost
 
     def draw(self):
@@ -139,9 +146,12 @@ class Paul(Actor):
     def get_open_adj_coords(self, coords):
         """returns list of valid coords that are adjacent to the argument, open, and not in the closed list."""
         directions = [(1,0),(0,1),(-1,0),(0,-1)]
+        costs = [1,1,1,1]
         adj_coords = map(lambda d: self.world._add_coords(coords,d), directions)
-        adj_coords = filter(lambda c: self.world._is_in_grid(c) and not self.world._is_occupied(c) and c not in self.closed_list, adj_coords)
-        return adj_coords
+        in_bounds = [self.world._is_in_grid(c) and not self.world._is_occupied(c) and c not in self.closed_list for c in adj_coords]
+        adj_coords = [c for (idx,c) in enumerate(adj_coords) if in_bounds[idx]]
+        costs = [c for (idx,c) in enumerate(costs) if in_bounds[idx]]
+        return adj_coords, costs
 
     def get_lowest_cost_open_coord(self):
         open_cells = self.open_list
@@ -160,6 +170,7 @@ class Paul(Actor):
     def get_path(self):
         """Follows cell parents backwards until the initial cell is reached to create a path, which is the list of coordinates that paul will travel through to reach the destination."""
         coord_list = [self.destination_coord]
+        print "final cost is", self.cells[coord_list[-1]].f_cost
         while self.start_coord not in coord_list:
             try:
                 coord_list.append(self.cells[coord_list[-1]].parents_coords)
@@ -189,10 +200,10 @@ class Paul(Actor):
             cell_s = self.cells[coord_s]
             self.open_list.remove(coord_s)
             self.closed_list.append(coord_s)
-            walkable_open_coords = self.get_open_adj_coords(coord_s)
-            for coord in walkable_open_coords:
+            walkable_open_coords, costs = self.get_open_adj_coords(coord_s)
+            for idx,coord in enumerate(walkable_open_coords):
                 cell = self.cells[coord]
-                g_cost = cell_s.g_cost + 1 #g cost is going to be one larger than the previous adjacent square's g cost
+                g_cost = cell_s.g_cost + costs[idx] #g cost is going to be one larger than the previous adjacent square's g cost
                 h_cost = self.get_h_cost(coord, destination_coord)
                 f_cost = g_cost + h_cost
                 if coord in self.open_list:
@@ -210,5 +221,3 @@ class Paul(Actor):
 if __name__ == "__main__":
     g = GridWorld()
     g.main_loop()
-
-
